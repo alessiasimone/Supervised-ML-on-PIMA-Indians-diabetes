@@ -6,3 +6,6 @@ neural network model applied.
 
 ## final.pdf
 Bike rental prediction 
+
+## book1 
+Dashboard of final.pdf 
