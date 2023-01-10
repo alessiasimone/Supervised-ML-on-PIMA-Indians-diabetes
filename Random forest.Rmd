@@ -1,0 +1,72 @@
+---
+title: "R Notebook"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+In this section we applied a non-parametric model to predict the presence of diabetes: the random forest model allows to build several classification trees throw a random selection of predictors that aren't correlated between each other. The final model will be an average of the resulting trees. 
+```{r}
+dataset <- read.csv(file.choose())
+row.names(dataset) <- dataset$X
+dataset <- dataset[,2:10]
+dataset$Class_variable <- factor(dataset$Class_variable, labels=c('No', 'Yes'))
+attach(dataset)
+```
+```{r}
+library(randomForest)
+set.seed(2612)
+(rf <- tuneRF(x = subset(dataset, select = -Class_variable), y = dataset$Class_variable, ntreeTry = 500, plot = F, mtryStart=8, doBest=T))
+```
+```{r}
+threshold <- function(predict, response) {
+  perf <- ROCR::performance(ROCR::prediction(predict, response), "sens", "spec")
+  df <- data.frame(cut = perf@alpha.values[[1]], sens = perf@x.values[[1]], spec = perf@y.values[[1]])
+  df[which.max(df$sens + df$spec), "cut"]
+}
+```
+
+The method works on predict the "Class variable" by using all the predictors, the algorithm try four predictors at each split and it builded up 500 classification trees.
+By training the random forest model we discover that by using 4 predictors we can gain the lowest Out-Of-Bag error (about 21%) with a class error of 15% for the prediction of absence of diabetes and 33% for the prediction of presence of diabetes.
+
+```{r}
+varImpPlot(rf, col="blue", pch=20, main="Variables' importance")
+```
+The most relevant metric is the relative importance of predictors. In this graph we can see the ranking predictors based on how much they influence the response: we can affirm that, according to the decreasing of the Gini index, the glucose tolerance test is the most important variable in our model. 
+
+# Goodness of fit
+```{r}
+N <- nrow(dataset)
+random.probs <- predict(rf, data=dataset, type='class') 
+(matrix <- addmargins(table(dataset$Class_variable, random.probs)))
+(accuracy <-(matrix[1,1]+matrix[2,2])/N*100)
+(error <- 100-accuracy)
+```
+The contingency matrix is automatically generated and it shows about 22% of error rate with an accuracy rate of about 77%. 
+
+To better understand the accuracy of our model, is this section we predict the response variable on the validation set by using the previous random forest model. 
+```{r}
+datasetV <- read.csv(file.choose())
+row.names(datasetV) <- datasetV$X
+datasetV <- datasetV[,2:10]
+datasetV$Class_variable <- factor(datasetV$Class_variable, labels=c('No', 'Yes'))
+attach(datasetV)
+```
+```{r}
+library(randomForest)
+randomforestV <- predict(rf, newdata = datasetV, type='class')
+(matrix <- addmargins(table(datasetV$Class_variable,randomforestV)))
+nV <- nrow(datasetV)
+(accuracy <-(matrix[1,1]+matrix[2,2])/nV*100)
+(error <- 100-accuracy)
+```
+As we can see, the majority of the prediction matched the true value and the model performed an accuracy rate of 77.24% and an error rate of 22.75% on the validation set. 
+```{r}
+library(verification)
+random.probs <- predict(rf, data=dataset, type='prob')
+random.probsV <- predict(rf, newdata=datasetV, type='prob')
+roc.plot(dataset$Class_variable== "Yes", random.probs[,2], ylab = "True Positive Rate", xlab = "False Positive Rate", main='ROC Curve train set')$roc.vol
+roc.plot(datasetV$Class_variable== "Yes", random.probsV[,2], ylab = "True Positive Rate", xlab = "False Positive Rate", main='ROC Curve validation set')$roc.vol
+```
+
