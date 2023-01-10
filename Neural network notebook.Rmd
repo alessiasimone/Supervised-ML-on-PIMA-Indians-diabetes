@@ -1,0 +1,117 @@
+---
+title: "R Notebook"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+In this chapter we applied the neural network model to build an artificial neuron that allows us to predict the presence of diabetes throw a deep learning method. This approach is considered as a parametric approach because of the estimation of weights into the function. 
+First, as neural network works better when observations are scaled, we build a matrix containing the scaled values to have mean equal to 0 and standard deviation equal to 1 to allow a better comparison between predictors. 
+```{r}
+dataset <- read.csv(file.choose())
+rownames(dataset) <- dataset$X
+dataset <- dataset[2:10]
+```
+```{r}
+train_data <- as.matrix(scale(dataset[1:8]))
+train_labels <- dataset$Class_variable
+```
+
+We build a single layer perceptron model throw Keras that contains: 
+the first input layer made up by 8 input neurons that correspond to the predictors, 
+the hidden layer containing 6 neurons in which ReLU function and dropout rate of 0.3 has been applied , 
+the output layer containing 1 neuron in which sigmoidal function has been applied to allow the production of results from 0 to 1, that will correspond to our response value.
+About the compiler, we set the "Adam" optimizer with accuracy metrics and binary crossentropy as loss measure. 
+```{r}
+library(keras)
+model <- keras_model_sequential() 
+model %>% 
+  layer_dense(units = 6, activation = 'relu', kernel_initializer='uniform', input_shape = c(8)) %>%
+  layer_dropout(rate=0.3) %>%
+  layer_dense(units = 1, activation = 'sigmoid', kernel_initializer='uniform')
+
+model %>% compile(
+  optimizer = "adam",
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+summary(model)
+```
+As we can see, the hidden layer contains 54 parameters represented by weights and the output layer contains 7 weights, for a total amout of 61 parameters. 
+
+# Goodness of fit
+Before predicting the response and comparing them throw a confusion matrix in both train and validation set, we fit the model with the mini-batch gradient descend to avoid overfitting: we set a batch size of 5 tat will iterate in 100 epocs.
+```{r}
+datasetV <- read.csv(file.choose())
+rownames(datasetV) <- datasetV$X
+datasetV <- datasetV[2:10]
+```
+```{r}
+val_data <- as.matrix(scale(datasetV[1:8]))
+val_labels <- datasetV$Class_variable
+```
+```{r}
+set.seed(2612)
+history <- model %>% fit(
+  train_data, train_labels, 
+  epochs =100, batch_size = 5, 
+  validation_data = list(val_data, val_labels),
+  verbose=0
+)
+plot(history)
+```
+As we can see from the plot, loss rate tends to decrease for both train and validation set and accuracy rate tends to increase for both train and validation set.
+```{r}
+set.seed(2612)
+threshold <- function(predict, response) {
+  perf <- ROCR::performance(ROCR::prediction(predict, response), "sens", "spec")
+  df <- data.frame(cut = perf@alpha.values[[1]], sens = perf@x.values[[1]], spec = perf@y.values[[1]])
+  df[which.max(df$sens + df$spec), "cut"]
+}
+```
+Now, we build the confusion matrix that allows to compare predicted value with true response of train set by taking into consideration the optimal value of threshold:
+
+```{r}
+N <- nrow(dataset)
+dataset$Class_variable <- factor(dataset$Class_variable, labels=c('No', 'Yes'))
+nn.pred <- rep('No', N)
+nn.pred[model %>% predict(train_data) > threshold(model %>% predict(train_data), dataset$Class_variable)]='Yes'
+(confMat <- addmargins(table(nn.pred, dataset$Class_variable)))
+(accuracy <- (confMat[1,1]+confMat[2,2])/N*100)
+(Err <- 100-accuracy)
+
+```
+By applying the model to predict the response in the train data we can build a confusion matrix to analyze the accuracy and error rate.
+Now we compare prediction and true response in the validation set to analyze how our model will behave in a new set of observations:
+
+```{r}
+nV <- nrow(datasetV)
+datasetV$Class_variable <- factor(datasetV$Class_variable, labels=c('No', 'Yes'))
+nn.predV <- rep('No', nV)
+nn.predV[model %>% predict(val_data) >threshold(model %>% predict(val_data), datasetV$Class_variable)]='Yes'
+(confMat <- addmargins(table(nn.predV, datasetV$Class_variable)))
+(accuracy <- (confMat[1,1]+confMat[2,2])/nV*100)
+(Err <- 100-accuracy)
+```
+Then, we did the same with the validation set to understand how the model will behave with a new dataset. 
+
+# CONCLUSION
+Before turn to the test set, we compare the ROC curves of our models on the validation set and we will choose the one with the highest area under the ROC curve (AUC value):
+
+```{r}
+library(verification)
+library(randomForest)
+set.seed(2612)
+rf <- tuneRF(x = subset(dataset, select = -Class_variable), y = dataset$Class_variable, ntreeTry = 500, plot = F, mtryStart=8, doBest=T)
+random.probsV <- predict(rf, newdata=datasetV, type='prob') 
+library(MASS)
+glm <- stepAIC(glm(Class_variable ~. +Age*pregnant_times, data = dataset, family = binomial))
+glm.probsV <- predict.glm(glm, newdata=datasetV, type='response')
+predictnnV <- model %>% predict(val_data)
+rocplotval <- roc.plot(x = (datasetV$Class_variable == "Yes"), pred = cbind(random.probsV[,2], glm.probsV, predictnnV), main = "ROC curve", legend = T, leg.text = c("Random Forest", "Logistic Regression", "Neural Network"))
+```
+As we can see, by plotting true and predicted values, random forest (black straight line) is the model with an higher AUC, followed by logistic regression (red dotted line) and neural network (green dotted line).
+
+
+
