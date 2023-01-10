@@ -1,11 +1,2 @@
-## Final report
-Prediction throw machine learning of
-Pima indians diabetes dataset by Kaggle.
-Logistic regression, random forest and 
-neural network model applied. 
-
-## final.pdf
-Bike rental prediction 
-
-## book1 
-Dashboard of final.pdf 
+# Supervised Machine Learning on Pima Indians diabetes (binary classification)
+This pdf contains a binary classification about the presence of diabetes on Pima indians. The dataset contains some medical analysis about blood metrics and the response variable detect the presence of the diabetes or not. The models tested was the logistic regression, random forest and Multilayer Perceptron, detecting as an optimal model the random forest.
